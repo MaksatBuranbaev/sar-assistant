@@ -1,0 +1,70 @@
+# Полный стенд: PostgreSQL со схемой, правами и демо-данными + приложение.
+#
+#   docker compose up --build
+#   http://localhost:8501
+#
+# Перед запуском положите GIGACHAT_CREDENTIALS в .env рядом с этим файлом.
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: pss_db
+      POSTGRES_USER: postgres
+      # Пароль суперпользователя нужен только внутри сети compose —
+      # наружу порт не публикуется, приложение ходит под pss_readonly.
+      POSTGRES_PASSWORD: ${POSTGRES_SUPERUSER_PASSWORD:-postgres}
+      # Пароль роли только на чтение. Одно значение на БД и на приложение —
+      # намеренно НЕ переиспользуем PG_PASSWORD: в .env разработчика это пароль
+      # его локального postgres, и внутри compose он означал бы совсем другое.
+      PSS_READONLY_PASSWORD: ${PSS_READONLY_PASSWORD:-change_me_in_env}
+    volumes:
+      # Скрипты выполняются один раз при первой инициализации тома,
+      # в алфавитном порядке имён.
+      - ./sql/schema.sql:/docker-entrypoint-initdb.d/01_schema.sql:ro
+      - ./sql/readonly_role.sql:/docker-entrypoint-initdb.d/02_readonly_role.sql:ro
+      - ./sql/seed_demo.sql:/docker-entrypoint-initdb.d/03_seed_demo.sql:ro
+      - ./sql/set_readonly_password.sh:/docker-entrypoint-initdb.d/04_set_readonly_password.sh:ro
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d pss_db"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    # Без этого после перезапуска Docker приложение поднималось бы, а база нет:
+    # condition service_healthy проверяется только при первом старте стека,
+    # а не при рестарте по политике.
+    restart: unless-stopped
+
+  app:
+    build: .
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      # Только localhost. У приложения нет аутентификации, а за ним стоит база:
+      # публикация на 0.0.0.0 выставила бы его наружу вместе с данными.
+      # Для реального развёртывания — обратный прокси с авторизацией впереди.
+      - "127.0.0.1:8501:8501"
+    environment:
+      PG_HOST: postgres
+      PG_PORT: 5432
+      PG_DB: pss_db
+      # Приложение подключается ролью только на чтение (sql/readonly_role.sql).
+      PG_USER: pss_readonly
+      PG_PASSWORD: ${PSS_READONLY_PASSWORD:-change_me_in_env}
+      GIGACHAT_CREDENTIALS: ${GIGACHAT_CREDENTIALS}
+      GIGACHAT_SCOPE: ${GIGACHAT_SCOPE:-GIGACHAT_API_PERS}
+      GIGACHAT_MODEL: ${GIGACHAT_MODEL:-GigaChat}
+      GIGACHAT_VERIFY_SSL: ${GIGACHAT_VERIFY_SSL:-false}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    restart: unless-stopped
+    # Запрос к GigaChat может выполняться десятки секунд. Дефолтных 10 с на
+    # остановку не хватало, и контейнер добивался SIGKILL с кодом 137.
+    stop_grace_period: 30s
+    # PID 1 в Linux не получает действий по умолчанию для сигналов; init
+    # снимает этот класс проблем и заодно хоронит осиротевшие процессы.
+    init: true
+
+volumes:
+  pgdata:

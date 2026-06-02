@@ -1,0 +1,30 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Environments
+.env
+env/
+venv/
+.venv
+
+# VS Code
+.vscode/
+
+# Секреты и сертификаты
+certs/
+*.pem
+*.key
+
+# Личные файлы, лежащие в рабочей папке. Резюме содержит телефон и почту —
+# в публичный репозиторий оно попасть не должно даже случайным `git add -A`.
+*.pdf
+*.docx
+
+# Логи
+*.log
+
+# Инструменты
+.pytest_cache/
+.ruff_cache/

@@ -1,0 +1,209 @@
+# Банк примеров «вопрос → эталонный SQL» для few-shot промпта.
+#
+# По вопросу пользователя retriever.py достаёт отсюда top-k наиболее похожих
+# примеров и подмешивает их в системный промпт. Банк можно пополнять, не трогая
+# код: добавление примера — это правка данных, а не релиз.
+#
+# ВАЖНО: эти примеры не должны пересекаться с eval/dataset.yaml. Если один и тот
+# же вопрос лежит и в банке, и в тестовом наборе, модель получит эталонный ответ
+# прямо в промпте, и execution accuracy окажется завышенной. Это классическая
+# утечка данных, только на уровне промпта.
+
+- question: Сколько всего выездов зарегистрировано?
+  sql: |
+    SELECT COUNT(*) AS total_departures
+    FROM pss_departures;
+
+- question: Сколько выездов было по каждому району?
+  sql: |
+    SELECT district, COUNT(*) AS departures
+    FROM pss_departures
+    GROUP BY district
+    ORDER BY departures DESC;
+
+- question: Какой тип происшествий встречается чаще всего?
+  sql: |
+    SELECT incident_type, COUNT(*) AS cnt
+    FROM pss_departures
+    GROUP BY incident_type
+    ORDER BY cnt DESC
+    LIMIT 1;
+
+- question: Сколько было выездов на ДТП?
+  sql: |
+    SELECT COUNT(*) AS dtp_departures
+    FROM pss_departures
+    WHERE incident_type ILIKE '%ДТП%';
+
+- question: Сколько выездов на ДТП по районам?
+  sql: |
+    SELECT district, COUNT(*) AS dtp_departures
+    FROM pss_departures
+    WHERE incident_type ILIKE '%ДТП%'
+    GROUP BY district
+    ORDER BY dtp_departures DESC;
+
+- question: Среднее время выезда по подразделениям
+  sql: |
+    SELECT pss_unit, ROUND(AVG(duration_total_min)::numeric, 1) AS avg_total_min
+    FROM pss_departures
+    WHERE duration_total_min IS NOT NULL
+    GROUP BY pss_unit
+    ORDER BY avg_total_min DESC;
+
+- question: Сколько выездов было с пострадавшими?
+  sql: |
+    SELECT COUNT(*) AS departures_with_victims
+    FROM pss_departures
+    WHERE victims > 0;
+
+- question: Сколько всего человек пострадало?
+  sql: |
+    SELECT COALESCE(SUM(victims), 0) AS total_victims
+    FROM pss_departures;
+
+- question: Покажи количество выездов по месяцам
+  sql: |
+    SELECT EXTRACT(YEAR FROM date) AS year,
+           EXTRACT(MONTH FROM date) AS month,
+           COUNT(*) AS departures
+    FROM pss_departures
+    GROUP BY year, month
+    ORDER BY year, month;
+
+- question: Сколько выездов было во втором квартале?
+  sql: |
+    SELECT COUNT(*) AS departures
+    FROM pss_departures
+    WHERE EXTRACT(QUARTER FROM date) = 2;
+
+- question: Топ-5 районов по числу выездов
+  sql: |
+    SELECT district, COUNT(*) AS departures
+    FROM pss_departures
+    GROUP BY district
+    ORDER BY departures DESC
+    LIMIT 5;
+
+- question: Сколько выездов приходится на ложные срабатывания сигнализации?
+  sql: |
+    SELECT COUNT(*) AS false_alarms
+    FROM pss_departures
+    WHERE incident_type ILIKE '%ложн%' OR incident_type ILIKE '%сигнализ%';
+
+- question: Какое среднее время в пути до места происшествия?
+  sql: |
+    SELECT ROUND(AVG(duration_travel_min)::numeric, 1) AS avg_travel_min
+    FROM pss_departures
+    WHERE duration_travel_min IS NOT NULL;
+
+- question: Сколько людей было эвакуировано по типам происшествий?
+  sql: |
+    SELECT incident_type, COALESCE(SUM(evacuated), 0) AS total_evacuated
+    FROM pss_departures
+    GROUP BY incident_type
+    ORDER BY total_evacuated DESC;
+
+- question: Покажи 10 самых длительных выездов
+  sql: |
+    SELECT record_id, date, pss_unit, incident_type, duration_total_min
+    FROM pss_departures
+    WHERE duration_total_min IS NOT NULL
+    ORDER BY duration_total_min DESC
+    LIMIT 10;
+
+- question: В какое время суток чаще всего происходят выезды?
+  sql: |
+    SELECT EXTRACT(HOUR FROM time_notify) AS hour_of_day,
+           COUNT(*) AS departures
+    FROM pss_departures
+    WHERE time_notify IS NOT NULL
+    GROUP BY hour_of_day
+    ORDER BY departures DESC;
+
+- question: Сколько техники ПСС в среднем привлекается на выезд?
+  sql: |
+    SELECT ROUND(AVG(vehicles_pss)::numeric, 2) AS avg_vehicles
+    FROM pss_departures
+    WHERE vehicles_pss IS NOT NULL;
+
+- question: По каким типам объектов было больше всего выездов?
+  sql: |
+    SELECT object_type, COUNT(*) AS departures
+    FROM pss_departures
+    GROUP BY object_type
+    ORDER BY departures DESC;
+
+- question: Топ-3 типа происшествий в каждом районе
+  sql: |
+    SELECT district, incident_type, departures
+    FROM (
+        SELECT district,
+               incident_type,
+               COUNT(*) AS departures,
+               ROW_NUMBER() OVER (PARTITION BY district ORDER BY COUNT(*) DESC) AS rn
+        FROM pss_departures
+        GROUP BY district, incident_type
+    ) ranked
+    WHERE rn <= 3
+    ORDER BY district, departures DESC;
+
+- question: Сколько занятий провели подразделения?
+  sql: |
+    SELECT pss_unit, COUNT(*) AS lessons
+    FROM pss_lessons
+    GROUP BY pss_unit
+    ORDER BY lessons DESC;
+
+- question: Сколько всего участников было на занятиях?
+  sql: |
+    SELECT COALESCE(SUM(participants_count), 0) AS total_participants
+    FROM pss_lessons;
+
+- question: Какие виды занятий проводятся чаще всего?
+  sql: |
+    SELECT lesson_type, COUNT(*) AS lessons
+    FROM pss_lessons
+    GROUP BY lesson_type
+    ORDER BY lessons DESC;
+
+- question: Занятия укладываются в плановую длительность?
+  sql: |
+    SELECT lesson_type,
+           ROUND(AVG(duration_min)::numeric, 1) AS avg_fact_min,
+           ROUND(AVG(duration_planned_min)::numeric, 1) AS avg_planned_min,
+           ROUND(AVG(duration_min - duration_planned_min)::numeric, 1) AS avg_delta_min
+    FROM pss_lessons
+    WHERE duration_min IS NOT NULL AND duration_planned_min IS NOT NULL
+    GROUP BY lesson_type
+    ORDER BY avg_delta_min DESC;
+
+- question: Сравни количество выездов и занятий по районам
+  sql: |
+    SELECT COALESCE(d.district, l.district) AS district,
+           COALESCE(d.departures, 0) AS departures,
+           COALESCE(l.lessons, 0) AS lessons
+    FROM (SELECT district, COUNT(*) AS departures FROM pss_departures GROUP BY district) d
+    FULL OUTER JOIN (SELECT district, COUNT(*) AS lessons FROM pss_lessons GROUP BY district) l
+      ON d.district = l.district
+    ORDER BY departures DESC;
+
+- question: Какие нормативы отрабатывались на занятиях чаще всего?
+  sql: |
+    SELECT normative, COUNT(*) AS lessons
+    FROM pss_lessons
+    WHERE normative IS NOT NULL
+    GROUP BY normative
+    ORDER BY lessons DESC
+    LIMIT 10;
+
+- question: Найди выезды, где в описании упоминается вода
+  sql: |
+    SELECT record_id, date, district, incident_type, description_raw
+    FROM pss_departures
+    WHERE description_raw ILIKE '%вод%'
+    ORDER BY date DESC;
+
+- question: Какая погода была вчера в Москве?
+  sql: |
+    SELECT 'NOT_APPLICABLE' AS result;

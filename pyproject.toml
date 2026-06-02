@@ -1,0 +1,25 @@
+[project]
+name = "pss-assistant"
+version = "1.0.0"
+description = "Аналитический ассистент ПСС МЧС — Text-to-SQL поверх GigaChat"
+requires-python = ">=3.11"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q --strict-markers"
+filterwarnings = ["ignore::DeprecationWarning"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+exclude = ["env", "venv", ".venv", "__pycache__"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "C4", "SIM"]
+ignore = [
+    "E501",    # длину строки контролирует форматтер
+    "B008",    # вызов в значении по умолчанию — осознанно в dataclass-полях
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["S101"]

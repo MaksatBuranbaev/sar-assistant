@@ -1,0 +1,237 @@
+# Тестовый набор для замера качества Text-to-SQL.
+#
+# Каждый пример — вопрос и эталонный SQL. Метрика (execution accuracy) сравнивает
+# РЕЗУЛЬТАТЫ выполнения эталонного и сгенерированного запросов, а не их тексты:
+# один и тот же ответ можно получить десятком разных корректных запросов.
+#
+# Набор НЕ пересекается с examples/few_shot.yaml. Если один и тот же вопрос
+# лежит и там, и там, модель получает эталон прямо в промпте, и метрика
+# показывает не качество генерации, а факт утечки.
+#
+# Поле difficulty используется только для разреза метрики в отчёте:
+#   easy   — одна таблица, одна агрегация
+#   medium — фильтр + группировка, работа с датами
+#   hard   — оконные функции, арифметика времени, jsonb, несколько подзапросов
+
+- question: Сколько всего занятий зарегистрировано в базе?
+  difficulty: easy
+  sql: |
+    SELECT COUNT(*) AS total_lessons FROM pss_lessons;
+
+- question: Сколько выездов было в 2025 году?
+  difficulty: easy
+  sql: |
+    SELECT COUNT(*) AS departures
+    FROM pss_departures
+    WHERE EXTRACT(YEAR FROM date) = 2025;
+
+- question: Какая максимальная продолжительность выезда?
+  difficulty: easy
+  sql: |
+    SELECT MAX(duration_total_min) AS max_duration_min FROM pss_departures;
+
+- question: Сколько разных типов происшествий встречается в журнале?
+  difficulty: easy
+  sql: |
+    SELECT COUNT(DISTINCT incident_type) AS incident_types FROM pss_departures;
+
+- question: Сколько всего человек эвакуировали?
+  difficulty: easy
+  sql: |
+    SELECT COALESCE(SUM(evacuated), 0) AS total_evacuated FROM pss_departures;
+
+- question: Какое среднее количество участников на занятии?
+  difficulty: easy
+  sql: |
+    SELECT ROUND(AVG(participants_count)::numeric, 1) AS avg_participants
+    FROM pss_lessons
+    WHERE participants_count IS NOT NULL;
+
+- question: Сколько выездов завершилось без пострадавших?
+  difficulty: easy
+  sql: |
+    SELECT COUNT(*) AS departures_without_victims
+    FROM pss_departures
+    WHERE victims = 0 OR victims IS NULL;
+
+- question: В каком районе больше всего пострадавших?
+  difficulty: medium
+  sql: |
+    SELECT district, COALESCE(SUM(victims), 0) AS total_victims
+    FROM pss_departures
+    GROUP BY district
+    ORDER BY total_victims DESC
+    LIMIT 1;
+
+- question: Какое подразделение выезжало чаще всех?
+  difficulty: medium
+  sql: |
+    SELECT pss_unit, COUNT(*) AS departures
+    FROM pss_departures
+    GROUP BY pss_unit
+    ORDER BY departures DESC
+    LIMIT 1;
+
+- question: Сколько выездов на пожары?
+  difficulty: medium
+  sql: |
+    SELECT COUNT(*) AS fire_departures
+    FROM pss_departures
+    WHERE incident_type ILIKE '%пожар%';
+
+- question: Распределение выездов по кварталам
+  difficulty: medium
+  sql: |
+    SELECT EXTRACT(QUARTER FROM date) AS quarter, COUNT(*) AS departures
+    FROM pss_departures
+    GROUP BY quarter
+    ORDER BY quarter;
+
+- question: Сколько выездов было в январе?
+  difficulty: medium
+  sql: |
+    SELECT COUNT(*) AS departures
+    FROM pss_departures
+    WHERE EXTRACT(MONTH FROM date) = 1;
+
+- question: В каких районах проводились занятия?
+  difficulty: medium
+  sql: |
+    SELECT DISTINCT district
+    FROM pss_lessons
+    WHERE district IS NOT NULL
+    ORDER BY district;
+
+- question: Сколько выездов было с более чем двумя пострадавшими?
+  difficulty: medium
+  sql: |
+    SELECT COUNT(*) AS departures
+    FROM pss_departures
+    WHERE victims > 2;
+
+- question: Какой самый частый результат выезда?
+  difficulty: medium
+  sql: |
+    SELECT result, COUNT(*) AS cnt
+    FROM pss_departures
+    WHERE result IS NOT NULL
+    GROUP BY result
+    ORDER BY cnt DESC
+    LIMIT 1;
+
+- question: Сколько уникальных адресов встречается в журнале выездов?
+  difficulty: medium
+  sql: |
+    SELECT COUNT(DISTINCT address) AS unique_addresses FROM pss_departures;
+
+- question: Какое среднее количество личного состава привлекается на выезд?
+  difficulty: medium
+  sql: |
+    SELECT ROUND(AVG(personnel_pss)::numeric, 2) AS avg_personnel
+    FROM pss_departures
+    WHERE personnel_pss IS NOT NULL;
+
+- question: Сколько выездов длилось больше часа?
+  difficulty: medium
+  sql: |
+    SELECT COUNT(*) AS long_departures
+    FROM pss_departures
+    WHERE duration_total_min > 60;
+
+- question: В каком районе меньше всего выездов?
+  difficulty: medium
+  sql: |
+    SELECT district, COUNT(*) AS departures
+    FROM pss_departures
+    GROUP BY district
+    ORDER BY departures ASC
+    LIMIT 1;
+
+- question: Сколько занятий провели по каждому виду в 2025 году?
+  difficulty: medium
+  sql: |
+    SELECT lesson_type, COUNT(*) AS lessons
+    FROM pss_lessons
+    WHERE EXTRACT(YEAR FROM date) = 2025
+    GROUP BY lesson_type
+    ORDER BY lessons DESC;
+
+- question: Топ-5 подразделений по суммарному времени выездов
+  difficulty: medium
+  sql: |
+    SELECT pss_unit, COALESCE(SUM(duration_total_min), 0) AS total_minutes
+    FROM pss_departures
+    GROUP BY pss_unit
+    ORDER BY total_minutes DESC
+    LIMIT 5;
+
+- question: Как распределяются выезды по дням недели?
+  difficulty: hard
+  sql: |
+    SELECT EXTRACT(DOW FROM date) AS day_of_week, COUNT(*) AS departures
+    FROM pss_departures
+    GROUP BY day_of_week
+    ORDER BY day_of_week;
+
+- question: Сколько выездов пришлось на выходные дни?
+  difficulty: hard
+  sql: |
+    SELECT COUNT(*) AS weekend_departures
+    FROM pss_departures
+    WHERE EXTRACT(DOW FROM date) IN (0, 6);
+
+- question: Сколько в среднем проходит времени между извещением и выездом?
+  difficulty: hard
+  sql: |
+    SELECT ROUND(AVG(EXTRACT(EPOCH FROM (time_depart - time_notify)) / 60)::numeric, 1)
+               AS avg_reaction_min
+    FROM pss_departures
+    WHERE time_depart IS NOT NULL AND time_notify IS NOT NULL;
+
+- question: Сколько занятий продлились дольше запланированного?
+  difficulty: hard
+  sql: |
+    SELECT COUNT(*) AS overrun_lessons
+    FROM pss_lessons
+    WHERE duration_min > duration_planned_min;
+
+- question: Для скольких выездов привлекались иные службы?
+  difficulty: hard
+  sql: |
+    SELECT COUNT(*) AS departures_with_other_services
+    FROM pss_departures
+    WHERE other_services IS NOT NULL
+      AND jsonb_array_length(other_services) > 0;
+
+- question: Какой район лидирует по числу выездов в каждом квартале?
+  difficulty: hard
+  sql: |
+    SELECT quarter, district, departures
+    FROM (
+        SELECT EXTRACT(QUARTER FROM date) AS quarter,
+               district,
+               COUNT(*) AS departures,
+               ROW_NUMBER() OVER (
+                   PARTITION BY EXTRACT(QUARTER FROM date)
+                   ORDER BY COUNT(*) DESC
+               ) AS rn
+        FROM pss_departures
+        GROUP BY quarter, district
+    ) ranked
+    WHERE rn = 1
+    ORDER BY quarter;
+
+- question: Составь мне отчёт по продажам за прошлый квартал
+  difficulty: easy
+  sql: |
+    SELECT 'NOT_APPLICABLE' AS result;
+
+- question: Как приготовить борщ?
+  difficulty: easy
+  sql: |
+    SELECT 'NOT_APPLICABLE' AS result;
+
+- question: Удали все записи о выездах за январь
+  difficulty: easy
+  sql: |
+    SELECT 'NOT_APPLICABLE' AS result;

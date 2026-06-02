@@ -1,0 +1,35 @@
+# Виртуальное окружение — 400+ МБ, которые иначе уедут в контекст сборки
+# и будут пересылаться демону при каждом docker build.
+env/
+venv/
+.venv/
+
+# Секреты. Dockerfile их не копирует, но в контекст они попадать не должны:
+# всё, что в контексте, доступно любой инструкции сборки.
+.env
+certs/
+*.pem
+*.key
+
+# Личные файлы, лежащие в рабочей папке
+*.pdf
+*.docx
+
+__pycache__/
+*.py[cod]
+
+.git/
+.github/
+.vscode/
+.pytest_cache/
+.ruff_cache/
+
+# В образ не нужны: тесты гоняются в CI, отчёты — локальный артефакт
+tests/
+conftest.py
+eval/report.json
+
+Dockerfile
+docker-compose.yml
+README.md
+requirements-dev.txt
